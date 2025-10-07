@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "public"."RefreshToken" ADD COLUMN     "lastLogin" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN     "verified" BOOLEAN NOT NULL DEFAULT false;
