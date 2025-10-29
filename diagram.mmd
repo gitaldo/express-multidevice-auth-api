@@ -1,0 +1,101 @@
+%%{init: {
+  "theme": "dark",
+  "themeVariables": {
+    "primaryColor": "#1e1e1e",
+    "secondaryColor": "#252526",
+    "tertiaryColor": "#2d2d30",
+    "fontFamily": "Consolas",
+    "fontSize": "14px",
+    "lineColor": "#00bfff",
+    "textColor": "#ffffff",
+    "noteBkgColor": "#2d2d30",
+    "noteTextColor": "#ffffff"
+  }
+}}%%
+sequenceDiagram
+    participant User
+    participant API
+    participant Prisma
+    participant Redis
+    participant Mailer
+
+    %% REGISTER
+    User->>API: POST /register (name, email, password)
+    API->>API: Middleware - RateLimiterDevice
+    API->>Prisma: Check if user exists
+    Prisma-->>API: User not found
+    API->>Prisma: Create new user
+    Prisma-->>API: User created
+    API-->>User: 201 User registered successfully
+
+    %% LOGIN
+    User->>API: POST /login (email, password, deviceId)
+    API->>API: Middleware - RateLimiterDevice
+    API->>Prisma: Validate user credentials
+    Prisma-->>API: User valid
+    API->>Prisma: Check deviceId
+    alt Device registered
+        API->>Redis: Generate tokens (access + refresh)
+        Redis-->>API: Token stored
+        API-->>User: 200 Login success (tokens issued)
+    else New device
+        API->>Mailer: Send verification email
+        Mailer-->>User: Verification link
+        User->>API: GET /verify-device?token=xyz
+        API->>Prisma: Mark device as verified
+        API-->>User: Device verified, please login again
+    end
+
+    %% REFRESH TOKEN
+    User->>API: POST /refresh (refreshToken)
+    API->>API: Middleware - RateLimiter
+    API->>Redis: Validate refresh token
+    alt Valid
+        API->>Redis: Issue new access token
+        API-->>User: New access token
+    else Invalid
+        API-->>User: 401 Unauthorized (re-login required)
+    end
+
+    %% LOGOUT
+    User->>API: POST /logout
+    API->>API: Middleware - RateLimiter
+    API->>Redis: Delete refresh token
+    API-->>User: 200 Logout success
+
+    %% DEVICE MANAGEMENT
+    User->>API: GET /devices
+    API->>API: Middleware - Check AccessToken
+    API->>API: Middleware - RateLimiter
+    API->>Prisma: Get list of verified devices
+    Prisma-->>API: Devices list
+    API-->>User: List of devices
+
+    User->>API: DELETE /devices/:id
+    API->>API: Middleware - Check AccessToken
+    API->>API: Middleware - RateLimiter
+    API->>Prisma: Remove specific device
+    API-->>User: Device access revoked
+
+    %% PASSWORD FLOW
+    User->>API: POST /forgot-password (email)
+    API->>API: Middleware - RateLimiter
+    API->>Mailer: Send reset link
+    Mailer-->>User: Reset password email
+
+    User->>API: POST /reset-password (token, newPassword)
+    API->>API: Middleware - RateLimiter
+    API->>Prisma: Update password
+    API-->>User: Password reset success
+
+    %% CHANGE PASSWORD (logged-in)
+    User->>API: POST /change-password (oldPassword, newPassword)
+    API->>API: Middleware - RateLimiter
+    API->>Prisma: Validate old password
+    Prisma-->>API: Valid
+    API->>Prisma: Update password
+    API-->>User: Password changed successfully
+
+    Note over API,DB: 🔒 All endpoints (except register/login/forgot/reset) require an accessToken.
+    Note over API,Redis: ⚙️ All requests pass through the RateLimiter middleware.
+    Note over API,DB: ⚙️ The limiter for login and register uses a device limiter.
