@@ -95,7 +95,7 @@ router.post("/login", loginLimiter,validate(loginSchema), login);
  *       401:
  *         description: Invalid or expired refresh token.
  */
-router.post("/refresh",loginLimiter,refresh);
+router.post("/refresh",verifyLimiter,refresh);
 
 /**
  * @swagger
@@ -110,7 +110,7 @@ router.post("/refresh",loginLimiter,refresh);
  *       401:
  *         description: Unauthorized or missing authentication token.
  */
-router.post("/logout",loginLimiter, logout);
+router.post("/logout",verifyLimiter, logout);
 
 /**
  * @swagger

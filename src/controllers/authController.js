@@ -27,18 +27,26 @@ function getDeviceFromReq(req) {
   };
 }
 
-export const register = async (req, res, next) => {
+export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
+
     const exists = await prisma.user.findUnique({ where: { email } });
-    if (exists) throw new AppError(400, "Email already registered");
+    if (exists) {
+      return res.error("Email already registered", 400);
+    }
 
     const hash = await bcrypt.hash(password, 10);
     await prisma.user.create({ data: { name, email, password: hash } });
 
-    return res.status(201).json({ message: "User registered successfully" });
-  } catch (e) {
-    next(e);
+    return res.success("User registered successfully", null, 201);
+  } catch (err) {
+    console.error("❌ [register] Error:", err);
+    return res.error(
+      "Internal server error",
+      500,
+      process.env.NODE_ENV === "development" ? err.message : undefined
+    );
   }
 };
 
@@ -50,13 +58,13 @@ export const login = async (req, res, next) => {
     const device = getDeviceFromReq(req);
 
     if (!device.deviceId) {
-      return res.status(400).json({ message: "Missing x-device-id header" });
+      return res.error("Missing x-device-id header", 400);
     }
 
-    if (!user) throw new AppError(401, "Invalid credentials");
+    if (!user) return res.error("Invalid credentials", 401);
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) throw new AppError(401, "Invalid credentials");
+    if (!ok) return res.error("Invalid credentials", 401);
 
     // cek device
     let userDevice = await prisma.userDevice.findUnique({
@@ -168,7 +176,7 @@ export const login = async (req, res, next) => {
       data: { lastLogin: new Date() },
     });
 
-    return res.json({ accessToken });
+    return res.success("User Login successfully", accessToken, 200);
   } catch (e) {
     next(e);
   }
@@ -178,7 +186,7 @@ export const refresh = async (req, res, next) => {
   try {
     const token = req.cookies?.[REFRESH_COOKIE] || req.body?.refreshToken;
 
-    if (!token) throw new AppError(401, "Missing refresh token");
+    if (!token) return res.error("Invalid credentials", 401);
 
     const deviceInfo = {
       ip: req.ip,
@@ -190,14 +198,14 @@ export const refresh = async (req, res, next) => {
     try {
       payload = verifyRefreshToken(token); // { id, iat, exp }
     } catch (e) {
-      throw new AppError(401, "Invalid refresh token");
+      return res.error("Invalid credentials", 401);
     }
 
     const record = await prisma.refreshToken.findUnique({ where: { token } });
     if (!record || record.revokedAt)
-      throw new AppError(401, "Refresh token revoked or not found");
+      return res.error("Invalid credentials", 401);
     if (record.expiresAt < new Date())
-      throw new AppError(401, "Refresh token expired");
+      return res.error("Invalid credentials", 401);
 
     // optional: rotate refresh token (good practice)
     // revoke old
@@ -248,7 +256,7 @@ export const refresh = async (req, res, next) => {
     // access token baru
     const accessToken = signAccessToken({ id: payload.id, did: payload.did });
 
-    return res.json({ accessToken });
+    return res.success("Refresh token successfully", accessToken, 200);
   } catch (e) {
     next(e);
   }
@@ -269,7 +277,7 @@ export const logout = async (req, res, next) => {
       });
     }
     res.clearCookie(REFRESH_COOKIE, { path: "/" });
-    return res.json({ message: "Logged out" });
+    return res.success("Logged out", [], 200);
   } catch (e) {
     next(e);
   }
@@ -279,14 +287,14 @@ export const verifyDevice = async (req, res, next) => {
   try {
     const { token } = req.query;
     if (!token || typeof token !== "string") {
-      return res.status(400).json({ message: "Missing token" });
+      return res.error("Missing token", 401);
     }
 
     let payload;
     try {
       payload = verifyAccessToken(token); // { uid, did, iat, exp, jti? }
     } catch (e) {
-      return res.status(400).json({ message: "Invalid or expired link" });
+      return res.error("Invalid or expired link", 401);
     }
 
     // makesure token is pending in Redis
@@ -352,23 +360,19 @@ export const verifyDevice = async (req, res, next) => {
         path: "/",
       });
 
-      return res.json({
-        message: "Device verified. You are now logged in.",
+      return res.success("Device verified. You are now logged in.", {
         accessToken,
       });
     }
 
-    
-    return res.json({
-      message: "Device verified. Please login on that device.",
-    });
+    return res.success("Device verified. Please login on that device.");
   } catch (err) {
     next(err);
   }
 };
 
 export const device = async (req, res) => {
-  const userId = req.user.id; 
+  const userId = req.user.id;
   const devices = await prisma.userDevice.findMany({
     where: { userId },
     select: {
@@ -378,7 +382,8 @@ export const device = async (req, res) => {
       lastLogin: true,
     },
   });
-  res.json(devices);
+
+  return res.success("Device list retrieved successfully", devices);
 };
 
 export const deleteDevice = async (req, res) => {
@@ -395,7 +400,7 @@ export const deleteDevice = async (req, res) => {
 
   await redis.del(`refresh:${decoded.id}:${decoded.did}`);
 
-  res.json({ success: true });
+  return res.success("Delete Device Successful", []);
 };
 
 export const changePassword = async (req, res) => {
@@ -407,7 +412,7 @@ export const changePassword = async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
   const valid = await bcrypt.compare(oldPassword, user.password);
-  if (!valid) return res.status(400).json({ message: "Old password wrong" });
+  if (!valid) return res.error("Old password wrong", 400);
 
   // update password
   const hashed = await bcrypt.hash(newPassword, 10);
@@ -423,7 +428,7 @@ export const changePassword = async (req, res) => {
 
   await redis.del(`refresh:${decoded.id}:${decoded.did}`);
 
-  res.json({ message: "Password updated, all sessions revoked" });
+  return res.success("Password updated, all sessions revoked", []);
 };
 
 export const forgotPassword = async (req, res) => {
@@ -432,7 +437,7 @@ export const forgotPassword = async (req, res) => {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(404).json({ message: "Email not found" });
+      return res.error("Email not found", 404);
     }
 
     // Generate token
@@ -450,10 +455,9 @@ export const forgotPassword = async (req, res) => {
       html: `<p>Klik this link for reset password:</p><a href="${resetLink}">${resetLink}</a>`,
     });
 
-    return res.json({ message: "Link reset password already send to email" });
+    return res.success("Link reset password already send to email");
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Error on Server" });
+    next(err);
   }
 };
 
@@ -469,7 +473,7 @@ export const resetPassword = async (req, res) => {
     const redisRefreshToken = await redis.get(`resetLink:${decoded.id}`);
 
     if (!redisRefreshToken) {
-      return res.status(401).json({ message: "Token already in use" });
+      return res.error("Token already in use", 401);
     }
 
     await prisma.user.update({
@@ -479,11 +483,8 @@ export const resetPassword = async (req, res) => {
 
     await redis.del(`resetLink:${decoded.id}`);
 
-    return res.json({ message: "Reset Password Success" });
+    return res.success("Reset Password Success");
   } catch (err) {
-    console.error(err);
-    return res
-      .status(400)
-      .json({ message: "Token invalid or expired" });
+    next(err);
   }
 };

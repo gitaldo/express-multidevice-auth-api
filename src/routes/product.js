@@ -17,6 +17,6 @@ const router = express.Router();
  *       200:
  *         description: Product list retrieved successfully.
  */
-router.get("/", authMiddleware,verifyLimiter,getProducts);
+router.get("/", verifyLimiter,authMiddleware,getProducts);
 
 export default router;

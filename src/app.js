@@ -12,6 +12,7 @@ import swaggerSpec from "./docs/swagger.js";
 import bodyParser from "body-parser";
 import path from "path";
 import { fileURLToPath } from "url";
+import { responseHandler } from "./middleware/responseHandler.js";
 
 dotenv.config();
 const app = express();
@@ -31,6 +32,8 @@ app.use(cors({
 app.use(express.json());
 // parser cokies
 app.use(cookieParser());
+
+app.use(responseHandler);
 
 // routes
 app.use("/api/auth", authRoutes);
@@ -56,6 +59,8 @@ app.use(
     },
   })
 );
+
+
 
 // not found + error
 app.use(notFoundHandler);
