@@ -20,7 +20,7 @@ const REFRESH_COOKIE = process.env.REFRESH_TOKEN_COOKIE_NAME || "rtid";
 
 function getDeviceFromReq(req) {
   return {
-    deviceId: req.headers["x-device-id"]?.toString() || "", // wajib dari client
+    deviceId: req.headers["x-device-id"]?.toString() || "", // required
     userAgent: req.headers["user-agent"]?.toString() || "unknown",
     ip: (req.headers["x-forwarded-for"] || req.ip || "").toString(),
     os: req.headers["sec-ch-ua-platform"]?.toString() || undefined,
@@ -66,7 +66,7 @@ export const login = async (req, res, next) => {
     });
 
     if (!userDevice) {
-      // buat entri device belum verified
+      // create entri device before verified
       userDevice = await prisma.userDevice.create({
         data: {
           userId: user.id,
@@ -80,13 +80,13 @@ export const login = async (req, res, next) => {
     }
 
     if (!userDevice.verified) {
-      // buat device-verify-token (JWT) dan simpan sidik di Redis
+      // create device-verify-token (JWT) dan save key to Redis
       const verifyJwt = signAccessToken({
         uid: user.id,
         did: device.deviceId,
       });
 
-      // Simpan sidik token di Redis, TTL 15 menit
+      // Save token di Redis, TTL 15 minute
       const key = `devverify:${verifyJwt}`;
       await redis.set(
         key,
@@ -98,7 +98,7 @@ export const login = async (req, res, next) => {
         60 * 15
       );
 
-      // kirim email verifikasi
+      // send verification email
       const verifyUrl = `${
         process.env.APP_URL
       }/api/auth/verify-device?token=${encodeURIComponent(verifyJwt)}`;
@@ -125,12 +125,12 @@ export const login = async (req, res, next) => {
       did: device.deviceId,
     });
 
-    // simpan refresh token ke DB (rotating tokens siap ke depan)
+    // save refresh token ke DB
     const decoded = verifyRefreshToken(refreshToken);
 
     await prisma.refreshToken.create({
       data: {
-        token: refreshToken, // bisa di-hash jika perlu
+        token: refreshToken,
         userId: user.id,
         expiresAt: new Date(decoded.exp * 1000),
         ip: device.ip,
@@ -144,7 +144,7 @@ export const login = async (req, res, next) => {
       refreshToken,
       "EX",
       60 * 60
-    ); // expire 1 jam
+    ); // expire 1 hour
 
     // set cookie httpOnly
     res.cookie(REFRESH_COOKIE, refreshToken, {
@@ -177,9 +177,8 @@ export const login = async (req, res, next) => {
 export const refresh = async (req, res, next) => {
   try {
     const token = req.cookies?.[REFRESH_COOKIE] || req.body?.refreshToken;
-    if (!token) throw new AppError(401, "Missing refresh token");
 
-    const device = getDeviceFromReq(req);
+    if (!token) throw new AppError(401, "Missing refresh token");
 
     const deviceInfo = {
       ip: req.ip,
@@ -211,7 +210,9 @@ export const refresh = async (req, res, next) => {
       id: payload.id,
       did: payload.did,
     });
+
     const decoded = verifyRefreshToken(newRefreshToken);
+
     await prisma.refreshToken.create({
       data: {
         token: newRefreshToken,
@@ -288,7 +289,7 @@ export const verifyDevice = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid or expired link" });
     }
 
-    // pastikan token masih pending di Redis
+    // makesure token is pending in Redis
     const key = `devverify:${token}`;
     const data = await redis.get(key);
     if (!data) {
@@ -298,22 +299,21 @@ export const verifyDevice = async (req, res, next) => {
     }
     const { userId, deviceId } = JSON.parse(data);
 
-    // kirim email verifikasi
+    // send verification email
     await notifyOldDevices({
       userId: userId,
       newDeviceId: deviceId,
     });
 
-    // tandai device verified di DB
+    // tag verified device in DB
     await prisma.userDevice.update({
       where: { userId_deviceId: { userId, deviceId } },
       data: { verified: true, lastLogin: new Date() },
     });
 
-    // hapus pending key
+    // delete pending key
     await redis.del(key);
 
-    // OPTIONAL: langsung issue tokens bila request datang dari device yang sama
     const reqDevice = getDeviceFromReq(req);
     if (reqDevice.deviceId && reqDevice.deviceId === deviceId) {
       const accessToken = signAccessToken({ id: userId, did: deviceId });
@@ -358,7 +358,7 @@ export const verifyDevice = async (req, res, next) => {
       });
     }
 
-    // Kalau bukan device yang sama, cukup beri status verified
+    
     return res.json({
       message: "Device verified. Please login on that device.",
     });
@@ -368,7 +368,7 @@ export const verifyDevice = async (req, res, next) => {
 };
 
 export const device = async (req, res) => {
-  const userId = req.user.id; // dari JWT
+  const userId = req.user.id; 
   const devices = await prisma.userDevice.findMany({
     where: { userId },
     select: {
@@ -403,11 +403,11 @@ export const changePassword = async (req, res) => {
   const userId = req.user.id;
   const token = req.cookies?.[REFRESH_COOKIE] || req.body?.refreshToken;
 
-  // ambil user
+  // get user
   const user = await prisma.user.findUnique({ where: { id: userId } });
 
   const valid = await bcrypt.compare(oldPassword, user.password);
-  if (!valid) return res.status(400).json({ message: "Old password salah" });
+  if (!valid) return res.status(400).json({ message: "Old password wrong" });
 
   // update password
   const hashed = await bcrypt.hash(newPassword, 10);
@@ -417,7 +417,7 @@ export const changePassword = async (req, res) => {
     data: { password: hashed },
   });
 
-  // revoke semua token di Redis
+  // revoke all token in Redis
 
   const decoded = verifyRefreshToken(token);
 
@@ -432,7 +432,7 @@ export const forgotPassword = async (req, res) => {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return res.status(404).json({ message: "Email tidak ditemukan" });
+      return res.status(404).json({ message: "Email not found" });
     }
 
     // Generate token
@@ -442,33 +442,31 @@ export const forgotPassword = async (req, res) => {
 
     await redis.set(`resetLink:${user.id}`, token, "EX", 60 * 15);
 
-    // Kirim email
+    // Send email
     await notifForgotPassword({
       from: process.env.SMTP_USER,
       to: email,
       subject: "Reset Password",
-      html: `<p>Klik link berikut untuk reset password:</p><a href="${resetLink}">${resetLink}</a>`,
+      html: `<p>Klik this link for reset password:</p><a href="${resetLink}">${resetLink}</a>`,
     });
 
-    return res.json({ message: "Link reset password telah dikirim ke email" });
+    return res.json({ message: "Link reset password already send to email" });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Terjadi kesalahan server" });
+    return res.status(500).json({ message: "Error on Server" });
   }
 };
 
 export const resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
-
+    console.log(token, newPassword);
     // Verifikasi token
     const decoded = verifyAccessToken(token);
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    const redisRefreshToken = await redis.get(
-      `resetLink:${decoded.id}`
-    );
+    const redisRefreshToken = await redis.get(`resetLink:${decoded.id}`);
 
     if (!redisRefreshToken) {
       return res.status(401).json({ message: "Token already in use" });
@@ -481,11 +479,11 @@ export const resetPassword = async (req, res) => {
 
     await redis.del(`resetLink:${decoded.id}`);
 
-    return res.json({ message: "Password berhasil direset" });
+    return res.json({ message: "Reset Password Success" });
   } catch (err) {
     console.error(err);
     return res
       .status(400)
-      .json({ message: "Token invalid atau sudah kadaluarsa" });
+      .json({ message: "Token invalid or expired" });
   }
 };

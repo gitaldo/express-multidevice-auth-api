@@ -3,17 +3,17 @@ import { resetPasswordPayload, resetPasswordView } from "../controllers/renderCo
 const router = express.Router();
 
 
-// halaman form reset password
+// reset password form page
 /**
  * @swagger
  * /reset-password:
  *   get:
- *     summary: Halaman form reset password
- *     description: Menampilkan halaman form untuk reset password (biasanya render HTML).
+ *     summary: Reset password form page
+ *     description: Displays the HTML form page for resetting a user's password.
  *     tags: [Auth]
  *     responses:
  *       200:
- *         description: Halaman reset password ditampilkan.
+ *         description: Reset password form displayed successfully.
  *         content:
  *           text/html:
  *             schema:
@@ -22,13 +22,13 @@ const router = express.Router();
  */
 router.get("/reset-password", resetPasswordView);
 
-// submit form reset password
+// submit reset password form
 /**
  * @swagger
  * /reset-password:
  *   post:
- *     summary: Submit form reset password
- *     description: Menerima payload untuk reset password (misalnya token, password baru).
+ *     summary: Submit reset password form
+ *     description: Accepts the payload for resetting a password (e.g., token and new password).
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -49,7 +49,7 @@ router.get("/reset-password", resetPasswordView);
  *                 example: "MyNewSecurePassword123!"
  *     responses:
  *       200:
- *         description: Password berhasil direset.
+ *         description: Password has been successfully reset.
  *         content:
  *           application/json:
  *             schema:
@@ -57,11 +57,11 @@ router.get("/reset-password", resetPasswordView);
  *               properties:
  *                 message:
  *                   type: string
- *                   example: "Password berhasil direset."
+ *                   example: "Password has been successfully reset."
  *       400:
- *         description: Payload tidak valid.
+ *         description: Invalid request payload.
  *       401:
- *         description: Token invalid atau sudah kadaluarsa.
+ *         description: Invalid or expired token.
  */
 router.post("/reset-password",resetPasswordPayload);
 

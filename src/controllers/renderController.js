@@ -1,16 +1,16 @@
-import prisma from "../config/prisma.js";
+// import prisma from "../config/prisma.js";
 
 import axios from "axios";
 
-// halaman form reset password
+// form reset password page
 export const resetPasswordView = async (req, res) => {
   const { token } = req.query;
 
   if (!token) {
-    return res.status(400).send("Token tidak valid atau hilang");
+    return res.status(400).send("Invalid Token");
   }
 
-  // render form, kirim token ke FE
+  // render form, send token to FE
   res.render("reset-password", { token });
 };
 
@@ -19,15 +19,15 @@ export const resetPasswordPayload = async (req, res) => {
   const { token, newPassword } = req.body;
 
   try {
-    // panggil API BE untuk update password
+    // call API BE for update password
     await axios.post(`${process.env.APP_URL}/api/auth/reset-password`, {
       token,
       newPassword,
     });
 
-    res.send("Password berhasil diperbarui, silakan login ulang.");
+    res.send("Password successfully updated, please log in again.");
   } catch (error) {
     console.error(error.response?.data || error.message);
-    res.status(400).send("Gagal reset password. Token mungkin tidak valid.");
+    res.status(400).send("Password reset failed. The token may be invalid.");
   }
 };

@@ -6,7 +6,7 @@ export function createTransport() {
     host: process.env.SMTP_HOST,
     port: process.env.SMTP_PORT,
     service: process.env.SMTP_SERVICE,
-    secure: false, // true jika port 465
+    secure: false, // true if port 465
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -14,49 +14,83 @@ export function createTransport() {
   });
 }
 
-export async function sendDeviceVerificationEmail({ to, verifyUrl, deviceInfo }) {
+export async function sendDeviceVerificationEmail({
+  to,
+  verifyUrl,
+  deviceInfo,
+}) {
   const transporter = createTransport();
-  const subject = "Verifikasi Perangkat Baru";
+  const subject = "Verify New Device";
   const html = `
-    <p>Hai, ada upaya login dari perangkat baru:</p>
+    <p>Hi, We detected a login attempt from a new device:</p>
     <ul>
       <li>IP: ${deviceInfo.ip}</li>
       <li>OS: ${deviceInfo.os || "-"}</li>
       <li>User-Agent: ${deviceInfo.userAgent}</li>
     </ul>
-    <p>Jika ini kamu, klik tombol di bawah untuk mengizinkan perangkat:</p>
-    <p><a href="${verifyUrl}" style="padding:10px 16px;background:#4f46e5;color:white;text-decoration:none;border-radius:6px">Verifikasi Perangkat</a></p>
-    <p>Link ini berlaku 15 menit.</p>
+    <p>If this was you, please click the button below to verify your device:</p>
+    <p><a href="${verifyUrl}" style="padding:10px 16px;background:#4f46e5;color:white;text-decoration:none;border-radius:6px">Verify Device</a></p>
+    <p>This verification link is valid for 15 minutes.</p>
   `;
-  await transporter.sendMail({ from: process.env.SMTP_FROM, to, subject, html });
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to,
+    subject,
+    html,
+  });
 }
 
-export async function notifyOldDevices({userId, newDeviceId}) {
+export async function notifyOldDevices({ userId, newDeviceId }) {
+  if (!userId || !newDeviceId) {
+    throw new Error("Missing required parameters: userId or newDeviceId");
+  }
 
-  const oldDevices = await prisma.userDevice.findMany({
-    where: {
-      userId,
-      deviceId: { not: newDeviceId },
-      verified: true,
-    },
-  });
+  // Select user & old devices with paralel methotde to impprove performance
+  const [user, oldDevices] = await Promise.all([
+    prisma.user.findUnique({ select: { email: true }, where: { id: userId } }),
+    prisma.userDevice.findMany({
+      where: {
+        userId,
+        deviceId: { not: newDeviceId },
+        verified: true,
+      },
+      select: { id: true },
+    }),
+  ]);
 
-  const user = await prisma.user.findUnique({ where: { id:userId } });
+  if (!user?.email) {
+    console.warn(`User ${userId} not have an email, notification will be skip.`);
+    return;
+  }
+
+  if (oldDevices.length === 0) {
+    console.info(`ℹThere not old device for user ${userId}.`);
+    return;
+  }
 
   const transporter = createTransport();
 
-  for (const device of oldDevices) {
-    // misalnya device.email stored, atau device tied ke user.email
-    await transporter.sendMail({
-      to: user.email,
-      subject: "Device Baru Terverifikasi",
-      text: `Device baru berhasil login: ${newDeviceId}. Jika bukan Anda, segera revoke.`,
-    });
+  const mailOptions = {
+    to: user.email,
+    subject: "Verification New Device",
+    text: `New Device Success to login: ${newDeviceId}. If it's not you, immediately revoke access from your account.`,
+  };
+
+  try {
+    // Paralel Send notification
+    await Promise.all(oldDevices.map(() => transporter.sendMail(mailOptions)));
+    console.log(
+      `Notification will be send to ${oldDevices.length} old device to user ${userId}`
+    );
+  } catch (err) {
+    console.error(
+      `Failed to send notification for user${userId}:`,
+      err.message
+    );
   }
 }
 
 export async function notifForgotPassword(bodyMail) {
-  
-    const transporter = createTransport();
-    await transporter.sendMail(bodyMail);
+  const transporter = createTransport();
+  await transporter.sendMail(bodyMail);
 }

@@ -20,19 +20,17 @@ const app = express();
 app.use(helmet());
 
 // set other access domain (Cors)
-app.use(
-  cors({
-    origin: true, // sesuaikan untuk production
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production'
+    ? 'https://yourdomain.com'
+    : 'http://localhost:3000',
+  credentials: true,
+}));
+
 
 app.use(express.json());
 // parser cokies
 app.use(cookieParser());
-
-// app.set('view engine', 'ejs');
-// app.use(bodyParser.urlencoded({ extended: true }));
 
 // routes
 app.use("/api/auth", authRoutes);
@@ -54,7 +52,7 @@ app.use(
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
     swaggerOptions: {
-      withCredentials: true, // 🔑 ini penting
+      withCredentials: true, // 🔑 it's important
     },
   })
 );

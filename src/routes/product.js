@@ -9,14 +9,14 @@ const router = express.Router();
  * @swagger
  * /api/products:
  *   get:
- *     summary: Ambil daftar produk (protected)
+ *     summary: Get product list (protected)
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Daftar produk berhasil diambil
+ *         description: Product list retrieved successfully.
  */
-router.get("/", getProducts);
+router.get("/", authMiddleware,verifyLimiter,getProducts);
 
 export default router;

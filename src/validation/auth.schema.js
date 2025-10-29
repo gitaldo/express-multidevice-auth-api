@@ -14,7 +14,7 @@ export const loginSchema = z.object({
 });
 
 
-// helper middleware untuk validasi
+// helper middleware for validasidation
 export function validate(schema) {
     return (req, res, next) => {
     try {
