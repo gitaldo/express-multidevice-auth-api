@@ -43,7 +43,7 @@ A robust, production-ready authentication and device management system built wit
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/express-multidevice-auth-api.git
+git https://github.com/gitaldo/express-multidevice-auth-api.git
 cd express-multidevice-auth-api
 
 npm install
